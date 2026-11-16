@@ -9,18 +9,29 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - name: Kirim Tes ke Telegram
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
         run: |
-          curl -X POST "https://api.telegram.org/bot9042449612:AAEd-XLtPPX7IKqkYIaAB-L-Vt71zAg5AXI/sendMessage" \
-          -H "Content-Type: application/json" \
-          -d '{"chat_id":"8427903806","text":"✅ SUKSES! Sistem OSINT Dammam aktif. Berjalan otomatis setiap jam."}'
-      
-      - name: Cek Gempa Bumi (USGS)
+          pip install requests feedparser
+
+      - name: Jalankan Monitor OSINT Lengkap
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          RESPONSE=$(curl -s "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=26.3431487&longitude=50.0950294&maxradiuskm=30&orderby=time&limit=5")
-          MAGNITUDE=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); features=data.get('features',[]); print(features[0]['properties']['mag']) if features else print('0')")
-          if (( $(echo "$MAGNITUDE >= 2.5" | bc -l) )); then
-            curl -X POST "https://api.telegram.org/bot9042449612:AAEd-XLtPPX7IKqkYIaAB-L-Vt71zAg5AXI/sendMessage" \
-            -H "Content-Type: application/json" \
-            -d "{\"chat_id\":\"8427903806\",\"text\":\"🌍 GEMPA TERDETEKSI! Magnitudo: $MAGNITUDE dalam radius 30km dari Al Shu'lah, Dammam.\"}"
-          fi
+          python3 monitor.py
+
+      - name: Commit state file (untuk hindari duplikat)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add sent_alerts.json 2>/dev/null || true
+          git commit -m "Update state" --allow-empty || true
+          git push
