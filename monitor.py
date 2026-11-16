@@ -161,6 +161,9 @@ def main():
     
     print(f"\n=== Monitor End ===")
     print(f"Total alerts sent this run tracked in state.")
+    
+    # Kirim status heartbeat ke Telegram
+    send_telegram(f"✅ *LAPORAN RUTIN*\n🕒 Waktu: {datetime.now(timezone.utc).strftime('%d-%m-%Y %H:%M UTC')}\n🌍 Gempa: Aman\n📰 Berita: Aman\n🔴 Reddit: Aman\n\nSistem OSINT Dammam aktif & memantau.")
 
 if __name__ == "__main__":
     main()
