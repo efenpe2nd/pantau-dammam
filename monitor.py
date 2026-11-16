@@ -32,6 +32,16 @@ def save_state(state):
         json.dump(state, f)
 
 def send_telegram(message):
+    # DEBUG: Tampilkan apakah token & chat_id terbaca
+    if not TELEGRAM_TOKEN:
+        print("❌ ERROR: TELEGRAM_TOKEN kosong! Secrets belum di-set.")
+        return False
+    if not TELEGRAM_CHAT_ID:
+        print("❌ ERROR: TELEGRAM_CHAT_ID kosong! Secrets belum di-set.")
+        return False
+    
+    print(f"🔧 Debug: Token length = {len(TELEGRAM_TOKEN)}, Chat ID = {TELEGRAM_CHAT_ID}")
+    
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -40,25 +50,18 @@ def send_telegram(message):
     }
     try:
         r = requests.post(url, json=data, timeout=10)
-        print(f"✅ Telegram sent: {r.status_code}")
-        return True
+        response_text = r.text
+        print(f"📡 Telegram response: {r.status_code} - {response_text}")
+        if r.status_code == 200:
+            print("✅ Alert terkirim sukses!")
+            return True
+        else:
+            print(f"❌ Telegram API error: {response_text}")
+            return False
     except Exception as e:
-        print(f"❌ Telegram error: {e}")
+        print(f"❌ Telegram exception: {e}")
         return False
-
-def hash_item(text):
-    return hashlib.md5(text.encode()).hexdigest()
-
-def is_duplicate(state, text):
-    h = hash_item(text)
-    if h in state["sent_hashes"]:
-        return True
-    state["sent_hashes"].append(h)
-    # Batasi max 500 hash agar file tidak bengkak
-    if len(state["sent_hashes"]) > 500:
-        state["sent_hashes"] = state["sent_hashes"][-500:]
-    return False
-
+        
 # ==========================================
 # 1. CEK GEMPA BUMI (USGS)
 # ==========================================
