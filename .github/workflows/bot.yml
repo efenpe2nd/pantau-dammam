@@ -1,0 +1,90 @@
+name: Telegram Bot Polling
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  poll-telegram:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Baca last_update_id
+        id: read_update
+        run: |
+          if [ -f last_update.txt ]; then
+            echo "LAST_ID=$(cat last_update.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "LAST_ID=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Cek pesan baru dari Telegram
+        id: check_messages
+        run: |
+          TOKEN="TOKEN_BARU_ANDA_DISINI"
+          CHAT_ID="8427903806"
+          LAST_ID=${{ steps.read_update.outputs.LAST_ID }}
+          
+          RESPONSE=$(curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates?offset=$((LAST_ID + 1))&timeout=5")
+          echo "$RESPONSE" > /tmp/updates.json
+          
+          if echo "$RESPONSE" | grep -q '"/cek"\|"/update"\|"/pantau"'; then
+            echo "COMMAND_FOUND=true" >> $GITHUB_OUTPUT
+            NEW_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['result'][-1]['update_id'])" 2>/dev/null || echo "$LAST_ID")
+            echo "NEW_ID=$NEW_ID" >> $GITHUB_OUTPUT
+            curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d "{\"chat_id\":\"${CHAT_ID}\",\"text\":\"⏳ Memproses permintaan... Laporan akan dikirim dalam 1-2 menit.\"}"
+          else
+            echo "COMMAND_FOUND=false" >> $GITHUB_OUTPUT
+            echo "NEW_ID=$LAST_ID" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Jalankan pemantauan jika ada command
+        if: steps.check_messages.outputs.COMMAND_FOUND == 'true'
+        run: |
+          TOKEN="9042449612:AAEd-XLtPPX7IKqkYIaAB-L-Vt71zAg5AXI"
+          CHAT_ID="8427903806"
+          
+          EQ_RESPONSE=$(curl -s "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=26.3431487&longitude=50.0950294&maxradiuskm=30&orderby=time&limit=5")
+          EQ_COUNT=$(echo "$EQ_RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(len(data.get('features',[])))")
+          
+          if [ "$EQ_COUNT" -gt "0" ]; then
+            EQ_DETAILS=$(echo "$EQ_RESPONSE" | python3 -c "
+import sys,json
+data=json.load(sys.stdin)
+for f in data.get('features',[])[:3]:
+    p=f['properties']
+    print(f\"• Magnitudo: {p.get('mag','?')}, Lokasi: {p.get('place','?')}\")
+")
+            EQ_MSG="🌍 Gempa terdeteksi:\n$EQ_DETAILS"
+          else
+            EQ_MSG="🌍 Tidak ada gempa signifikan dalam 24 jam terakhir."
+          fi
+          
+          NEWS_RESPONSE=$(curl -s -A "Mozilla/5.0" "https://www.alarabiya.net/.mrss/saudi-arabia")
+          if echo "$NEWS_RESPONSE" | grep -q "الدمام\|الشرقية\|إنذار\|انفجار"; then
+            NEWS_MSG="📰 Ada berita terkait Dammam/Provinsi Timur. Cek feed langsung."
+          else
+            NEWS_MSG="📰 Tidak ada berita darurat terdeteksi."
+          fi
+          
+          REPORT="📊 *LAPORAN MANUAL - Al Shu'lah, Dammam*\n\n${EQ_MSG}\n\n${NEWS_MSG}\n\n🕒 Waktu cek: $(date '+%d-%m-%Y %H:%M WIB')\n\n_Kirim /cek kapan saja untuk update terbaru._"
+          
+          curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${CHAT_ID}\",\"text\":\"$REPORT\",\"parse_mode\":\"Markdown\"}"
+
+      - name: Update last_update.txt
+        if: steps.check_messages.outputs.COMMAND_FOUND == 'true'
+        run: |
+          NEW_ID=${{ steps.check_messages.outputs.NEW_ID }}
+          echo "$NEW_ID" > last_update.txt
+          git config --global user.email "bot@pantaudammam.com"
+          git config --global user.name "PantauBot"
+          git add last_update.txt
+          git commit -m "Update last_update_id: $NEW_ID"
+          git push
